@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template createa NatGateway in each public subnet
+Parameters:
+  ExportVPCStackName:
+    Description: The name of the VPC stack that Export
+    Type: String
+Resources:
+  NatGatewayElasticIP1:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: ElasticIP 1
+  NatGatewayElasticIP2:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: ElasticIP 2
+  NatGateway1:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      SubnetId: !ImportValue
+        'Fn::Sub': '${ExportVPCStackName}-PublicSubnet1'
+      AllocationId: !GetAtt
+        - NatGatewayElasticIP1
+        - AllocationId
+      Tags:
+        - Key: Name
+          Value: NatGateway Public Subnet 1
+  NatGateway2:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      SubnetId: !ImportValue
+        'Fn::Sub': '${ExportVPCStackName}-PublicSubnet2'
+      AllocationId: !GetAtt
+        - NatGatewayElasticIP2
+        - AllocationId
+      Tags:
+        - Key: Name
+          Value: NatGateway Public Subnet 2
+  PrivateRouteTable1:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !ImportValue
+        'Fn::Sub': '${ExportVPCStackName}-VPC'
+      Tags:
+        - Key: Name
+          Value: Private Route Table 1
+  PrivateRoute1:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+      RouteTableId: !Ref PrivateRouteTable1
+  PrivateSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      SubnetId: !ImportValue
+        'Fn::Sub': '${ExportVPCStackName}-PrivateSubnet1'
+  PrivateSubnet3RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      SubnetId: !ImportValue
+        'Fn::Sub': '${ExportVPCStackName}-PrivateSubnet3'
+  PrivateRouteTable2:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !ImportValue
+        'Fn::Sub': '${ExportVPCStackName}-VPC'
+      Tags:
+        - Key: Name
+          Value: Private Route Table 2
+  PrivateRoute2:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway2
+      RouteTableId: !Ref PrivateRouteTable2
+  PrivateSubnet2RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      SubnetId: !ImportValue
+        'Fn::Sub': '${ExportVPCStackName}-PrivateSubnet2'
+  PrivateSubnet4RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      SubnetId: !ImportValue
+        'Fn::Sub': '${ExportVPCStackName}-PrivateSubnet4'
