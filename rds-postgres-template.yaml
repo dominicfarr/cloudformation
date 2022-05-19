@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: This template creates a RDS Database with Postgres engine
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Export VPC Stack Name
+        Parameters:
+          - ExportVPCStackName
+      - Label:
+          default: Database parametes
+        Parameters:
+          - DatabaseInstanceIdentifier
+          - DatabaseName
+          - DatabaseUser
+          - DatabasePassword
+          - DatabaseBackupRetentionPeriod
+          - DatabaseStorage
+          - DatabaseInstanceClass
+          - MultiAZDatabase
+
+Parameters:
+  ExportVPCStackName:
+    Type: String
+    Description: The name of the VPC stack that exports values
+  DatabaseInstanceIdentifier:
+    Type: String
+    Description: Instanece identifier name
+    Default: app-postgres-rds
+    ConstraintDescription: The DB instance identifier is case-insensitive, but is stored as all lowercase. 1 to 60 alphanumeric characters or hyphens. First character must be a letter. Can't contain two consecutive hyphens. Can't end with a hyphen.
+    AllowedPattern: '[A-Za-z][a-zA-Z-\d]{0,60}$'
+    MaxLength: 60
+    MinLength: 1
+  DatabaseName:
+    Type: String
+    Description: Initial Database name. If you do not specify a database name, Amazon RDS does not create a database.
+    Default: appdb
+    ConstraintDescription: A string of up to 64 alpha-numeric characters
+    AllowedPattern: '[A-Za-z0-9]{1,64}'
+    MaxLength: 64
+    MinLength: 1
+  DatabaseUser:
+    Type: String
+    Description: 1 to 16 alphanumeric characters. First character must be a letter.
+    Default: postgres
+    ConstraintDescription: A string of up to 64 alpha-numeric characters.
+    AllowedPattern: '[A-Za-z0-9]{1,16}'
+    MaxLength: 16
+    MinLength: 1
+    NoEcho: true
+  DatabasePassword:
+    Type: String
+    Description: 1 to 16 alphanumeric characters.
+    ConstraintDescription: 'Constraint issue! At least 8 printable ASCII characters [a-zA-Z0-9]'
+    AllowedPattern: '[A-Za-z0-9]{8,41}'
+    MinLength: 8
+    MaxLength: 41
+    NoEcho: true
+  DatabaseBackupRetentionPeriod:
+    Type: Number
+    Description: Choose the number of days that RDS should retain automatic backups for this instance.
+    Default: 0
+    MinValue: 0
+    MaxValue: 35
+  DatabaseStorage:
+    Type: Number
+    Description: The size of the database
+    ConstraintDescription: Must be between 5 and 1024Gb
+    Default: 20
+    MinValue: 5
+    MaxValue: 1024
+  DatabaseInstanceClass:
+    Type: String
+    Description: The database instance type
+    ConstraintDescription: Must select a valid type
+    Default: db.t3.micro
+    AllowedValues:
+      - db.t3.micro
+      - db.m5.large
+      - db.m5.xlarge
+  MultiAZDatabase:
+    Type: String
+    Description: Create a multi-AZ instance or not
+    Default: true
+    ConstraintDescription: Must be true or false
+    AllowedValues:
+      - true
+      - false
+
+Resources:
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for RDS database
+      SubnetIds:
+        - Fn::ImportValue: !Sub ${ExportVPCStackName}-PrivateSubnet3
+        - Fn::ImportValue: !Sub ${ExportVPCStackName}-PrivateSubnet4
+      Tags:
+        - Key: Name
+          Value: database subnets
+  DatabaseInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      DBInstanceIdentifier: !Ref DatabaseInstanceIdentifier
+      DBName: !Ref DatabaseName
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      AllocatedStorage: !Ref DatabaseStorage
+      StorageType: gp2
+      BackupRetentionPeriod: !Ref DatabaseBackupRetentionPeriod
+      MasterUsername: !Ref DatabaseUser
+      MasterUserPassword: !Ref DatabasePassword
+      MultiAZ: !Ref MultiAZDatabase
+      Engine: postgres
+      VPCSecurityGroups:
+        - Fn::ImportValue: !Sub ${ExportVPCStackName}-DatabaseSecurityGroup

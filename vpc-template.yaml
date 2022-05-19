@@ -175,7 +175,7 @@ Resources:
   ApplicationLoadBalancerSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
-      GroupDescription: 'Security Group For App, enables Http/s 80/443'
+      GroupDescription: 'Security Group For App, enables http/https 80/443'
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -226,16 +226,16 @@ Resources:
   DatabaseSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
-      GroupDescription: Security Group For Web Server
+      GroupDescription: Security Group For Database
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 3306
-          ToPort: 3306
+          FromPort: 5432
+          ToPort: 5432
           SourceSecurityGroupId: !Ref WebServerSecurityGroup
       Tags:
         - Key: Name
-          Value: Database Security Group
+          Value: Database Security Group for Postgres
 
 Outputs:
   VPC:
