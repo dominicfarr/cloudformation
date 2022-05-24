@@ -1,0 +1,697 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: AWS Fargate Prisma stack.
+Parameters:
+  PrismaVersion:
+    Type: String
+    Default: 1.34.0
+    AllowedValues:
+      - 1.34.0
+      - 1.33.0
+      - 1.32.0
+      - 1.31.0
+      - 1.30.0
+      - 1.29.0
+      - 1.28.0
+      - 1.27.0
+      - 1.26.0
+      - 1.25.0
+      - 1.24.0
+      - 1.23.0
+      - 1.22.0
+      - 1.21.0
+      - 1.20.0
+      - 1.19.0
+      - 1.18.0
+      - 1.17.0
+      - 1.16.0
+      - 1.15.0
+      - 1.14.0
+      - 1.13.0
+      - 1.12.0
+      - 1.11.0
+      - 1.10.2
+      - 1.9.0
+      - 1.8.4
+      - 1.8.3
+      - 1.7.4
+  DbHost:
+    Type: String
+  DbPort:
+    Type: Number
+    Default: 5432
+  DbUser:
+    Type: String
+  DbPassword:
+    Type: String
+    NoEcho: true
+  DbConnector:
+    Type: String
+    Default: postgres
+  DbName:
+    Type: String
+  Cpu:
+    Type: String
+    Description: >-
+      The CPU units for the container. Must adhere to
+      https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-taskdefinition.html.
+    Default: 1024
+  Memory:
+    Description: >-
+      The memory reservation for the container. Must adhere to
+      https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-ecs-taskdefinition.html.
+    Type: Number
+    Default: 2048
+  JvmOpts:
+    Description: >-
+      The JVM options passed to prisma. For example, change this value when
+      changing the memory parameter. Max heap memory (Xmx) should be roughly two
+      thirds of the total memory.
+    Type: String
+    Default: '-Xmx1350m'
+  ManagementApiSecret:
+    Description: The secret for your Prisma server.
+    Type: String
+Mappings:
+  SubnetConfig:
+    VPC:
+      CIDR: 10.0.0.0/16
+    PublicOne:
+      CIDR: 10.0.0.0/24
+    PublicTwo:
+      CIDR: 10.0.1.0/24
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !FindInMap
+        - SubnetConfig
+        - VPC
+        - CIDR
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: beb81049-b3b7-4d36-9612-846261237eb5
+  PublicSubnetOne:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: 'AWS::Region'
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap
+        - SubnetConfig
+        - PublicOne
+        - CIDR
+      MapPublicIpOnLaunch: true
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 05e30c9a-917e-4202-a464-f1f12caf06f0
+  PublicSubnetTwo:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs
+          Ref: 'AWS::Region'
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap
+        - SubnetConfig
+        - PublicTwo
+        - CIDR
+      MapPublicIpOnLaunch: true
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 0727ef3a-c191-4bf4-8874-cf96cf4c447a
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 888d97e1-b3e9-4258-8693-c6f7819f8c31
+  GatewayAttachement:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 6a6d3907-2316-46a3-b152-70d8677740a3
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 608d7e77-137d-4a67-b7fa-910195146cfd
+  PublicRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: GatewayAttachement
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: f4cc1bb6-9a45-4e0f-81ba-66d85a3bc986
+  PublicSubnetOneRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnetOne
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnetTwoRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnetTwo
+      RouteTableId: !Ref PublicRouteTable
+  ECSCluster:
+    Type: 'AWS::ECS::Cluster'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 513bee84-10c6-41df-a72b-0af11eb561d8
+  FargateContainerSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Access to the Fargate containers
+      VpcId: !Ref VPC
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: bcb10bb6-1bd2-443e-9ad0-61f61f0b9951
+  EcsSecurityGroupIngressFromPublicALB:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      Description: Ingress from the public ALB
+      GroupId: !Ref FargateContainerSecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref PublicLoadBalancerSG
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: c28abd38-99ef-41ea-944a-9b346efff23f
+  EcsSecurityGroupIngressFromSelf:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      Description: Ingress from other containers in the same security group
+      GroupId: !Ref FargateContainerSecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref FargateContainerSecurityGroup
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: bec212d7-bff1-4225-ac0d-bddbdd11caac
+  PublicLoadBalancerSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Access to the public facing load balancer
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: -1
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 0b1daef4-5a19-411b-a0e4-ea7b2706e816
+  PublicLoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '30'
+      Subnets:
+        - !Ref PublicSubnetOne
+        - !Ref PublicSubnetTwo
+      SecurityGroups:
+        - !Ref PublicLoadBalancerSG
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 9559e6a4-9595-451f-97a8-bdd8798fe210
+  PrismaTargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckIntervalSeconds: 6
+      HealthCheckPath: /status
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Name: !Join
+        - '-'
+        - - !Ref 'AWS::StackName'
+          - prisma
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 2
+      VpcId: !Ref VPC
+      TargetType: ip
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 60742e8b-d34a-467f-aaaa-5d8db188dc2e
+  PublicLoadBalancerListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    DependsOn:
+      - PublicLoadBalancer
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref PrismaTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref PublicLoadBalancer
+      Port: 80
+      Protocol: HTTP
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: dea0405e-64b8-43c2-8b8b-68f9d512a066
+  PrismaLogs:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Ref 'AWS::StackName'
+      RetentionInDays: 7
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: ab89d211-cd5f-487d-bcdb-753400f18be0
+  TaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      Cpu: !Ref Cpu
+      Memory: !Ref Memory
+      RequiresCompatibilities:
+        - FARGATE
+      Family: prisma
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      TaskRoleArn: !Ref ECSTaskExecutionRole
+      ContainerDefinitions:
+        - Name: prisma-container
+          Essential: true
+          Image: !Join
+            - ':'
+            - - prismagraphql/prisma
+              - !Ref PrismaVersion
+          PortMappings:
+            - ContainerPort: 60000
+          Environment:
+            - Name: PRISMA_CONFIG
+              Value: !Sub
+                - |
+                  port: 60000
+                  managementApiSecret: ${ManagementApiSecret}
+                  ssl: true
+                  databases:
+                    default:
+                      connector: ${DbConnector}
+                      host: ${DbHost}
+                      database: ${DbName}
+                      port: ${DbPort}
+                      user: ${DbUser}
+                      password: ${DbPassword}
+                      ssl: true
+                      rawAccess: true
+                      migrations: true
+                - {}
+            - Name: JAVA_OPTS
+              Value: !Ref JvmOpts
+          Ulimits:
+            - Name: nofile
+              HardLimit: 1000000
+              SoftLimit: 1000000
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref 'AWS::StackName'
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: prisma
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 5b53a014-eaa9-4951-b054-33d6d90bf5bf
+  PrismaService:
+    Type: 'AWS::ECS::Service'
+    DependsOn: PublicLoadBalancerListener
+    Properties:
+      Cluster: !Ref ECSCluster
+      ServiceName: Prisma
+      LaunchType: FARGATE
+      DesiredCount: 1
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      TaskDefinition: !Ref TaskDefinition
+      LoadBalancers:
+        - ContainerName: prisma-container
+          ContainerPort: 60000
+          TargetGroupArn: !Ref PrismaTargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref PublicLoadBalancerSG
+          Subnets:
+            - !Ref PublicSubnetOne
+            - !Ref PublicSubnetTwo
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: f7b8ed60-0584-4398-9370-c9d89fb108bc
+  ECSRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: ecs-service
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ec2:AttachNetworkInterface'
+                  - 'ec2:CreateNetworkInterface'
+                  - 'ec2:CreateNetworkInterfacePermission'
+                  - 'ec2:DeleteNetworkInterface'
+                  - 'ec2:DeleteNetworkInterfacePermission'
+                  - 'ec2:Describe*'
+                  - 'ec2:DetachNetworkInterface'
+                  - 'elasticloadbalancing:DeregisterInstancesFromLoadBalancer'
+                  - 'elasticloadbalancing:DeregisterTargets'
+                  - 'elasticloadbalancing:Describe*'
+                  - 'elasticloadbalancing:RegisterInstancesWithLoadBalancer'
+                  - 'elasticloadbalancing:RegisterTargets'
+                Resource: '*'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: a69bbf4c-8887-475b-a23b-ee0af7d67559
+  ECSTaskExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: AmazonECSTaskExecutionRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ecr:BatchGetImage'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: '*'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: cac6c1f6-de3e-4281-b6f1-0c87eb81e431
+Outputs:
+  ClusterName:
+    Description: The name of the ECS cluster
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Join
+        - ':'
+        - - !Ref 'AWS::StackName'
+          - ClusterName
+  ExternalUrl:
+    Description: The url of the external load balancer
+    Value: !Join
+      - ''
+      - - 'http://'
+        - !GetAtt
+          - PublicLoadBalancer
+          - DNSName
+    Export:
+      Name: !Join
+        - ':'
+        - - !Ref 'AWS::StackName'
+          - ExternalUrl
+  ECSRole:
+    Description: The ARN of the ECS role
+    Value: !GetAtt
+      - ECSRole
+      - Arn
+    Export:
+      Name: !Join
+        - ':'
+        - - !Ref 'AWS::StackName'
+          - ECSRole
+  ECSTaskExecutionRole:
+    Description: The ARN of the ECS role
+    Value: !GetAtt
+      - ECSTaskExecutionRole
+      - Arn
+    Export:
+      Name: !Join
+        - ':'
+        - - !Ref 'AWS::StackName'
+          - ECSTaskExecutionRole
+  PublicListener:
+    Description: The ARN of the public load balancer's Listener
+    Value: !Ref PublicLoadBalancerListener
+    Export:
+      Name: !Join
+        - ':'
+        - - !Ref 'AWS::StackName'
+          - PublicListener
+  VPCId:
+    Description: The ID of the VPC that this stack is deployed in
+    Value: !Ref VPC
+    Export:
+      Name: !Join
+        - ':'
+        - - !Ref 'AWS::StackName'
+          - VPCId
+  PublicSubnetOne:
+    Description: Public subnet one
+    Value: !Ref PublicSubnetOne
+    Export:
+      Name: !Join
+        - ':'
+        - - !Ref 'AWS::StackName'
+          - PublicSubnetOne
+  PublicSubnetTwo:
+    Description: Public subnet two
+    Value: !Ref PublicSubnetTwo
+    Export:
+      Name: !Join
+        - ':'
+        - - !Ref 'AWS::StackName'
+          - PublicSubnetTwo
+  FargateContainerSecurityGroup:
+    Description: A security group used to allow Fargate containers to receive traffic
+    Value: !Ref FargateContainerSecurityGroup
+    Export:
+      Name: !Join
+        - ':'
+        - - !Ref 'AWS::StackName'
+          - FargateContainerSecurityGroup
+Metadata:
+  'AWS::CloudFormation::Designer':
+    cac6c1f6-de3e-4281-b6f1-0c87eb81e431:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 750
+        'y': 90
+      z: 1
+      embeds: []
+    a69bbf4c-8887-475b-a23b-ee0af7d67559:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 750
+        'y': 210
+      z: 1
+      embeds: []
+    5b53a014-eaa9-4951-b054-33d6d90bf5bf:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 270
+        'y': 480
+      z: 1
+      embeds: []
+    ab89d211-cd5f-487d-bcdb-753400f18be0:
+      size:
+        width: 150
+        height: 150
+      position:
+        x: 660
+        'y': 390
+      z: 1
+      embeds: []
+    513bee84-10c6-41df-a72b-0af11eb561d8:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 270
+        'y': 600
+      z: 1
+      embeds: []
+    888d97e1-b3e9-4258-8693-c6f7819f8c31:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 390
+        'y': 600
+      z: 1
+      embeds: []
+    beb81049-b3b7-4d36-9612-846261237eb5:
+      size:
+        width: 330
+        height: 330
+      position:
+        x: 60
+        'y': 90
+      z: 1
+      embeds:
+        - 60742e8b-d34a-467f-aaaa-5d8db188dc2e
+        - 0b1daef4-5a19-411b-a0e4-ea7b2706e816
+        - bcb10bb6-1bd2-443e-9ad0-61f61f0b9951
+    60742e8b-d34a-467f-aaaa-5d8db188dc2e:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 90
+        'y': 150
+      z: 2
+      parent: beb81049-b3b7-4d36-9612-846261237eb5
+      embeds: []
+      iscontainedinside:
+        - beb81049-b3b7-4d36-9612-846261237eb5
+        - beb81049-b3b7-4d36-9612-846261237eb5
+        - beb81049-b3b7-4d36-9612-846261237eb5
+    0b1daef4-5a19-411b-a0e4-ea7b2706e816:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 210
+        'y': 150
+      z: 2
+      parent: beb81049-b3b7-4d36-9612-846261237eb5
+      embeds: []
+      iscontainedinside:
+        - beb81049-b3b7-4d36-9612-846261237eb5
+        - beb81049-b3b7-4d36-9612-846261237eb5
+        - beb81049-b3b7-4d36-9612-846261237eb5
+    bcb10bb6-1bd2-443e-9ad0-61f61f0b9951:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 90
+        'y': 270
+      z: 2
+      parent: beb81049-b3b7-4d36-9612-846261237eb5
+      embeds: []
+      iscontainedinside:
+        - beb81049-b3b7-4d36-9612-846261237eb5
+        - beb81049-b3b7-4d36-9612-846261237eb5
+        - beb81049-b3b7-4d36-9612-846261237eb5
+    bec212d7-bff1-4225-ac0d-bddbdd11caac:
+      source:
+        id: bcb10bb6-1bd2-443e-9ad0-61f61f0b9951
+      target:
+        id: bcb10bb6-1bd2-443e-9ad0-61f61f0b9951
+      z: 2
+    c28abd38-99ef-41ea-944a-9b346efff23f:
+      source:
+        id: 0b1daef4-5a19-411b-a0e4-ea7b2706e816
+      target:
+        id: bcb10bb6-1bd2-443e-9ad0-61f61f0b9951
+      z: 2
+    608d7e77-137d-4a67-b7fa-910195146cfd:
+      size:
+        width: 240
+        height: 240
+      position:
+        x: 450
+        'y': 90
+      z: 1
+      embeds:
+        - f4cc1bb6-9a45-4e0f-81ba-66d85a3bc986
+    6a6d3907-2316-46a3-b152-70d8677740a3:
+      source:
+        id: beb81049-b3b7-4d36-9612-846261237eb5
+      target:
+        id: 888d97e1-b3e9-4258-8693-c6f7819f8c31
+      z: 1
+    f4cc1bb6-9a45-4e0f-81ba-66d85a3bc986:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 480
+        'y': 150
+      z: 2
+      parent: 608d7e77-137d-4a67-b7fa-910195146cfd
+      embeds: []
+      isassociatedwith:
+        - 888d97e1-b3e9-4258-8693-c6f7819f8c31
+      iscontainedinside:
+        - 608d7e77-137d-4a67-b7fa-910195146cfd
+        - 608d7e77-137d-4a67-b7fa-910195146cfd
+        - 608d7e77-137d-4a67-b7fa-910195146cfd
+      dependson:
+        - 6a6d3907-2316-46a3-b152-70d8677740a3
+    0727ef3a-c191-4bf4-8874-cf96cf4c447a:
+      size:
+        width: 150
+        height: 150
+      position:
+        x: 60
+        'y': 480
+      z: 1
+      embeds: []
+    05e30c9a-917e-4202-a464-f1f12caf06f0:
+      size:
+        width: 150
+        height: 150
+      position:
+        x: 450
+        'y': 390
+      z: 1
+      embeds: []
+    9559e6a4-9595-451f-97a8-bdd8798fe210:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 510
+        'y': 600
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - 0b1daef4-5a19-411b-a0e4-ea7b2706e816
+    dea0405e-64b8-43c2-8b8b-68f9d512a066:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 630
+        'y': 600
+      z: 1
+      embeds: []
+    f7b8ed60-0584-4398-9370-c9d89fb108bc:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 750
+        'y': 600
+      z: 1
+      embeds: []
+      dependson:
+        - dea0405e-64b8-43c2-8b8b-68f9d512a066

@@ -3,8 +3,8 @@ Description: >-
   This template create a NatGateway in each public subnet. These NatGateways
   allow the private subnets can access the internet for patches and updates.
   WARNING: NatGateway is very expensive, and billed per hour. 
-  WARNING: Only launch this stack when required for patches to private subnet.
-  WARNING: Or create an EC2 bastion instance to handle the hop from internt to ec2 to private subnet.
+  WARNING: Only launch this stack when required for patches/updates to instances in private subnet.
+  WARNING: Or create a temporary EC2 bastion instance to handle the hop from internt to ec2 to private subnet.
 Parameters:
   ExportVPCStackName:
     Description: The name of the VPC stack that Export
